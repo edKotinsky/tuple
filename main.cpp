@@ -2,11 +2,6 @@
 #include <cassert>
 #include <iostream>
 
-template <typename T>
-void check() {
-  std::cout << __PRETTY_FUNCTION__ << std::endl;
-}
-
 int main() {
   using namespace my;
 
