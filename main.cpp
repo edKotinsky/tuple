@@ -37,7 +37,7 @@ int main() {
   Tuple<int, double, bool> const t1(20, 1.41, false);
 
   auto i1 = t1.get<0>();
-  assert(i1 == 10);
+  assert(i1 == 20);
 
   auto lconst = [](auto const& val) {
     std::cout << val << std::endl;
