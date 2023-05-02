@@ -1,6 +1,7 @@
 #ifndef MY_TUPLE_HPP
 #define MY_TUPLE_HPP
 
+#include <functional>
 #include <type_traits>
 
 namespace my {
@@ -12,12 +13,20 @@ namespace my {
 
     template <typename T, typename... Ts>
     struct TupleData<T, Ts...> {
-      T value;
-      TupleData<Ts...> next;
+      using value_t = T;
+      using next_t = TupleData<Ts...>;
+      value_t value;
+      next_t next;
     };
 
-    template <>
-    struct TupleData<> {};
+    template <class Tuple>
+    struct IsTupleValid : std::false_type {};
+
+    template <typename T, typename... Ts>
+    struct IsTupleValid<TupleData<T, Ts...>> : std::true_type {};
+
+    template <class Tuple>
+    static constexpr bool IsTupleValid_v = IsTupleValid<Tuple>::value;
 
     template <typename Tuple, typename... Ts>
     struct SpreadValues {
@@ -67,35 +76,36 @@ namespace my {
 
     struct Error_Tuple_Out_Of_Bounds {};
 
-    template <class Tuple, class Visitor, unsigned Current>
     struct Getter {
-      void operator()(Tuple&, unsigned, Visitor) {}
-
-      void operator()(Tuple const&, unsigned, Visitor) const {}
-    };
-
-    template <unsigned Current, class Visitor, typename T, typename... Ts>
-    struct Getter<TupleData<T, Ts...>, Visitor, Current> {
-      using next_t = Getter<TupleData<Ts...>, Visitor, Current + 1>;
-
-      void operator()(TupleData<T, Ts...>& t, unsigned index, Visitor vis) {
-        if (index == Current) {
-          vis(t.value);
+      template <class Tuple, class Visitor, std::size_t CurrentElement = 0>
+      auto get(Tuple& t, Visitor&& vis, std::size_t index)
+          -> std::enable_if_t<IsTupleValid_v<std::decay_t<Tuple>>> {
+        if (index == CurrentElement) {
+          std::invoke(std::forward<Visitor>(vis), t.value);
           return;
         }
-        next_t n;
-        n(t.next, index, vis);
+        using tuple_t = std::decay_t<Tuple>;
+        using next_t = typename tuple_t::next_t;
+        get<next_t, Visitor, CurrentElement + 1>(
+            t.next, std::forward<Visitor>(vis), index);
       }
 
-      void operator()(TupleData<T, Ts...> const& t, unsigned index,
-                      Visitor vis) const {
-        if (index == Current) {
-          vis(t.value);
+      template <class Tuple, class Visitor, std::size_t CurrentElement = 0>
+      auto get(Tuple const& t, Visitor&& vis, std::size_t index)
+          -> std::enable_if_t<IsTupleValid_v<std::decay_t<Tuple>>> const {
+        if (index == CurrentElement) {
+          std::invoke(std::forward<Visitor>(vis), t.value);
           return;
         }
-        next_t n;
-        n(t.next, index, vis);
+        using tuple_t = std::decay_t<Tuple>;
+        using next_t = typename tuple_t::next_t;
+        get<next_t, Visitor, CurrentElement + 1>(
+            t.next, std::forward<Visitor>(vis), index);
       }
+
+      template <class Tuple, class Visitor, std::size_t CurrentElement = 0>
+      auto get(Tuple const&, Visitor&&, std::size_t)
+          -> std::enable_if_t<!IsTupleValid_v<std::decay_t<Tuple>>> const {}
     };
 
   } // namespace details
@@ -129,15 +139,15 @@ namespace my {
     }
 
     template <class Visitor>
-    void visit(unsigned index, Visitor vis) {
-      details::Getter<data_t, Visitor, 0> getter;
-      getter(data, index, vis);
+    void visit(unsigned index, Visitor&& vis) {
+      details::Getter getter;
+      getter.get(data, std::forward<Visitor>(vis), index);
     }
 
     template <class Visitor>
-    void visit(unsigned index, Visitor vis) const {
-      details::Getter<data_t, Visitor, 0> const getter;
-      getter(data, index, vis);
+    void visit(unsigned index, Visitor&& vis) const {
+      details::Getter getter;
+      getter.get(data, std::forward<Visitor>(vis), index);
     }
 
     constexpr unsigned size() { return sz; }
