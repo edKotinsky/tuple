@@ -171,6 +171,18 @@ namespace my {
   template <class Tuple>
   static constexpr bool tuple_size_v = tuple_size<Tuple>::value;
 
+  template <std::size_t Index, class T>
+  struct tuple_element {};
+
+  template <std::size_t Index, typename T, typename... Ts>
+  struct tuple_element<Index, Tuple<T, Ts...>>
+      : tuple_element<Index - 1, Tuple<Ts...>> {};
+
+  template <typename T, typename... Ts>
+  struct tuple_element<0, Tuple<T, Ts...>> {
+    using type = T;
+  };
+
   namespace details {
 
     template <std::size_t Size, typename... Ts>
@@ -237,7 +249,7 @@ namespace my {
     constexpr std::size_t size =
         details::GetSize<std::decay_t<Tuples>...>::size;
     static_assert(details::CheckSize<size, std::decay_t<Tuples>...>::value,
-        "All tuples must be the same size");
+                  "All tuples must be the same size");
     using return_t = typename details::GetReturnType<Visitor, Tuples...>::type;
     return details::Dispatcher<true, return_t>::template switch_<0, size>(
         index, std::forward<Visitor>(v), t.data...);
