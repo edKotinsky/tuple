@@ -33,153 +33,88 @@ namespace my {
 
     template <class Tuple, std::size_t Index, std::size_t Current,
               typename AlwaysVoid>
-    struct StaticGetter {
-      static constexpr bool valid = false;
-    };
+    struct StaticGetterImpl {};
 
     template <std::size_t Index, std::size_t Current, typename T,
               typename... Ts>
-    struct StaticGetter<TupleData<T, Ts...>, Index, Current,
-                        std::enable_if_t<(Current != Index)>> {
-      static constexpr bool valid = true;
-      using getter_t = StaticGetter<TupleData<Ts...>, Index, Current + 1, void>;
+    struct StaticGetterImpl<TupleData<T, Ts...>, Index, Current,
+                            std::enable_if_t<(Current != Index)>> {
+      using getter_t =
+          StaticGetterImpl<TupleData<Ts...>, Index, Current + 1, void>;
 
-      auto& operator()(TupleData<T, Ts...>& t) noexcept {
-        getter_t getter;
-        return getter(t.next);
-      }
-
-      auto const& operator()(TupleData<T, Ts...> const& t) const noexcept {
-        getter_t getter;
-        return getter(t.next);
+      template <class Tuple>
+      static auto& get(Tuple&& t) {
+        static_assert(std::is_same_v<std::decay_t<Tuple>, TupleData<T, Ts...>>);
+        return getter_t::get(t.next);
       }
     };
 
     template <std::size_t Index, std::size_t Current, typename T,
               typename... Ts>
-    struct StaticGetter<TupleData<T, Ts...>, Index, Current,
-                        std::enable_if_t<(Current == Index)>> {
-      static constexpr bool valid = true;
-
-      T& operator()(TupleData<T, Ts...>& t) noexcept { return t.value; }
-
-      T const& operator()(TupleData<T, Ts...> const& t) const noexcept {
+    struct StaticGetterImpl<TupleData<T, Ts...>, Index, Current,
+                            std::enable_if_t<(Current == Index)>> {
+      template <class Tuple>
+      static constexpr auto& get(Tuple&& t) {
+        static_assert(std::is_same_v<std::decay_t<Tuple>, TupleData<T, Ts...>>);
         return t.value;
       }
     };
 
-    struct Error_Tuple_Out_Of_Bounds {};
-
-    template <class TupleData, std::size_t Size, typename Void>
-    struct Case {
-      template <class Tuple, class Visitor>
-      Case(Tuple const&, Visitor&&) noexcept {}
-    };
-
-    template <class TupleData, std::size_t Index, std::size_t Current,
-              std::size_t Size>
-    struct Case<
-        StaticGetter<TupleData, Index, Current, void>, Size,
-        std::enable_if<(StaticGetter<TupleData, Index, Current, void>::valid &&
-                        Index < Size)>> {
-      using sgetter_t = StaticGetter<TupleData, Index, Current, void>;
-
-      /*
-       * Noexcept if `std::invoke(vis, val)` is noexcept
-       */
-      template <class Tuple, class Visitor>
-      Case(Tuple& t, Visitor&& vis) noexcept(std::invoke(
-          std::declval<Visitor>(),
-          std::declval<
-              decltype(std::declval<sgetter_t>(std::declval<Tuple>()))>())) {
-        sgetter_t getter;
-        auto& val = getter(t);
-        std::invoke(std::forward<Visitor>(vis), val);
+    template <std::size_t Index>
+    struct StaticGetter {
+      template <class Tuple>
+      static constexpr auto& get(Tuple&& t) {
+        using getter_t = StaticGetterImpl<std::decay_t<Tuple>, Index, 0, void>;
+        return getter_t::get(t);
       }
     };
 
-    template <std::size_t Size>
-    struct Getter {
-      template <class Tuple, class Visitor, std::size_t CurrentElement = 0>
-      auto get(Tuple& t, Visitor&& vis, std::size_t index)
-          -> std::enable_if_t<IsTupleValid_v<std::decay_t<Tuple>>> {
-        if (index == CurrentElement) {
-          std::invoke(std::forward<Visitor>(vis), t.value);
-          return;
-        }
-        using tuple_t = std::decay_t<Tuple>;
-        using next_t = typename tuple_t::next_t;
-        get<next_t, Visitor, CurrentElement + 1>(
-            t.next, std::forward<Visitor>(vis), index);
+    template <bool Valid, typename Ret>
+    struct Dispatcher {
+      template <std::size_t Index, class Visitor, class Tuple>
+      static constexpr Ret case_(Visitor&&, Tuple&&) {}
+
+      template <std::size_t Base, std::size_t Size, class Visitor, class Tuple>
+      static constexpr Ret switch_(std::size_t, Visitor&&, Tuple&) {}
+    };
+
+    template <typename Ret>
+    struct Dispatcher<true, Ret> {
+      template <std::size_t Index, class Visitor, class Tuple>
+      static constexpr Ret case_(Visitor&& vis, Tuple&& t) {
+        using return_t =
+            decltype(std::invoke(std::declval<Visitor>(),
+                                 std::declval<decltype(StaticGetter<Index>::get(
+                                     std::declval<Tuple>()))>()));
+        using expected_t = Ret;
+        static_assert(std::is_same_v<return_t, expected_t>);
+        using getter_t = StaticGetter<Index>;
+        return std::invoke(std::forward<Visitor>(vis), getter_t::get(t));
       }
 
-      template <class Tuple, class Visitor, std::size_t Current = 0>
-      std::enable_if_t<IsTupleValid_v<std::decay_t<Tuple>>>
-          get(Tuple const& t, Visitor&& vis, std::size_t index) const {
+      template <std::size_t Base, std::size_t Size, class Visitor, class Tuple>
+      static constexpr Ret switch_(std::size_t index, Visitor&& vis, Tuple& t) {
         switch (index) {
-          case Current:
-            {
-              using getter_t = StaticGetter<Tuple, Current, Current, void>;
-              Case<getter_t, Size, void> c(t, std::forward<Visitor>(vis));
-              break;
-            }
-          case Current + 1:
-            {
-              using getter_t = StaticGetter<Tuple, Current + 1, Current, void>;
-              Case<getter_t, Size, void> c(t, std::forward<Visitor>(vis));
-              break;
-            }
-          case Current + 2:
-            {
-              using getter_t = StaticGetter<Tuple, Current + 2, Current, void>;
-              Case<getter_t, Size, void> c(t, std::forward<Visitor>(vis));
-              break;
-            }
-          case Current + 3:
-            {
-              using getter_t = StaticGetter<Tuple, Current + 3, Current, void>;
-              Case<getter_t, Size, void> c(t, std::forward<Visitor>(vis));
-              break;
-            }
-          case Current + 4:
-            {
-              using getter_t = StaticGetter<Tuple, Current + 4, Current, void>;
-              Case<getter_t, Size, void> c(t, std::forward<Visitor>(vis));
-              break;
-            }
-          case Current + 5:
-            {
-              using getter_t = StaticGetter<Tuple, Current + 5, Current, void>;
-              Case<getter_t, Size, void> c(t, std::forward<Visitor>(vis));
-              break;
-            }
-          case Current + 6:
-            {
-              using getter_t = StaticGetter<Tuple, Current + 6, Current, void>;
-              Case<getter_t, Size, void> c(t, std::forward<Visitor>(vis));
-              break;
-            }
-          case Current + 7:
-            {
-              using getter_t = StaticGetter<Tuple, Current + 7, Current, void>;
-              Case<getter_t, Size, void> c(t, std::forward<Visitor>(vis));
-              break;
-            }
+          case Base:
+            return Dispatcher<(Base < Size), Ret>::template case_<Base>(
+                std::forward<Visitor>(vis), t);
+          case Base + 1:
+            return Dispatcher<(Base + 1 < Size), Ret>::template case_<Base + 1>(
+                std::forward<Visitor>(vis), t);
+          case Base + 2:
+            return Dispatcher<(Base + 2 < Size), Ret>::template case_<Base + 2>(
+                std::forward<Visitor>(vis), t);
+          case Base + 3:
+            return Dispatcher<(Base + 3 < Size), Ret>::template case_<Base + 3>(
+                std::forward<Visitor>(vis), t);
           default:
-            {
-              using tuple_t = std::decay_t<Tuple>;
-              using next_t = typename tuple_t::next_t;
-              get<next_t, Visitor, Current + 8>(
-                  t.next, std::forward<Visitor>(vis), index);
-              break;
-            }
+            return Dispatcher<(Base + 4 < Size), Ret>::template switch_<
+                Base + 4, Size>(index, std::forward<Visitor>(vis), t);
         }
       }
-
-      template <class Tuple, class Visitor, std::size_t CurrentElement = 0>
-      std::enable_if_t<!IsTupleValid_v<std::decay_t<Tuple>>>
-          get(Tuple const&, Visitor&&, std::size_t) const noexcept {}
     };
+
+    struct Error_Tuple_Out_Of_Bounds {};
 
   } // namespace details
 
@@ -192,33 +127,35 @@ namespace my {
     Tuple() = default;
 
     template <std::size_t Index>
-    auto& get() {
-      using trueType = details::StaticGetter<data_t, Index, 0, void>;
+    constexpr auto& get() {
+      using trueType = details::StaticGetter<Index>;
       using falseType = details::Error_Tuple_Out_Of_Bounds;
       using result = std::conditional_t<(Index < sz), trueType, falseType>;
-      result getter;
-      return getter(data);
+      return result::get(data);
     }
 
     template <std::size_t Index>
-    auto const& get() const {
-      using trueType = details::StaticGetter<data_t, Index, 0, void>;
+    constexpr auto const& get() const {
+      using trueType = details::StaticGetter<Index>;
       using falseType = details::Error_Tuple_Out_Of_Bounds;
       using result = std::conditional_t<(Index < sz), trueType, falseType>;
-      result const getter;
-      return getter(data);
+      return result::get(data);
     }
 
     template <class Visitor>
     void visit(std::size_t index, Visitor&& vis) {
-      details::Getter<sz> getter;
-      getter.get(data, std::forward<Visitor>(vis), index);
+      using return_t =
+          decltype(std::invoke(std::forward<Visitor>(vis), data.value));
+      return details::Dispatcher<true, return_t>::template switch_<0, sz>(
+          index, std::forward<Visitor>(vis), data);
     }
 
     template <class Visitor>
     void visit(std::size_t index, Visitor&& vis) const {
-      details::Getter<sz> getter;
-      getter.get(data, std::forward<Visitor>(vis), index);
+      using return_t =
+          decltype(std::invoke(std::forward<Visitor>(vis), data.value));
+      return details::Dispatcher<true, return_t>::template switch_<0, sz>(
+          index, std::forward<Visitor>(vis), data);
     }
 
     constexpr std::size_t size() { return sz; }
