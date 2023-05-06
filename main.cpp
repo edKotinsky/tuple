@@ -49,5 +49,11 @@ int main() {
 
   visit(0, lconst, t1);
 
+  auto ll = [] (auto& v1, auto const& v2) {
+    std::cout << v1 << ' ' << v2 << std::endl;
+  };
+
+  visit(0, ll, t, t1);
+
   return 0;
 }

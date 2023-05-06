@@ -17,6 +17,8 @@ namespace my {
 
       TupleData() = default;
       using value_t = T;
+      using reference_type = value_t&;
+      using const_reference = value_t const&;
       using next_t = TupleData<Ts...>;
       value_t value;
       next_t next;
@@ -71,45 +73,52 @@ namespace my {
 
     template <bool Valid, typename Ret>
     struct Dispatcher {
-      template <std::size_t Index, class Visitor, class Tuple>
-      static constexpr Ret case_(Visitor&&, Tuple&&) {}
+      template <std::size_t Index, class Visitor, class... Tuples>
+      static constexpr Ret case_(Visitor&&, Tuples&&...) {}
 
-      template <std::size_t Base, std::size_t Size, class Visitor, class Tuple>
-      static constexpr Ret switch_(std::size_t, Visitor&&, Tuple&) {}
+      template <std::size_t Base, std::size_t Size, class Visitor,
+                class... Tuples>
+      static constexpr Ret switch_(std::size_t, Visitor&&, Tuples&&...) {}
+    };
+
+    template <std::size_t Index, typename T>
+    struct GetterType {
+      using type = decltype(StaticGetter<Index>::get(std::declval<T>()));
     };
 
     template <typename Ret>
     struct Dispatcher<true, Ret> {
-      template <std::size_t Index, class Visitor, class Tuple>
-      static constexpr Ret case_(Visitor&& vis, Tuple&& t) {
-        using return_t =
-            decltype(std::invoke(std::declval<Visitor>(),
-                                 std::declval<decltype(StaticGetter<Index>::get(
-                                     std::declval<Tuple>()))>()));
+      template <std::size_t Index, class Visitor, class... Tuples>
+      static constexpr Ret case_(Visitor&& vis, Tuples&&... t) {
+        using return_t = decltype(std::invoke(
+            std::declval<Visitor>(),
+            std::declval<typename GetterType<Index, Tuples>::type>()...));
         using expected_t = Ret;
         static_assert(std::is_same_v<return_t, expected_t>);
         using getter_t = StaticGetter<Index>;
-        return std::invoke(std::forward<Visitor>(vis), getter_t::get(t));
+        return std::invoke(std::forward<Visitor>(vis), getter_t::get(t)...);
       }
 
-      template <std::size_t Base, std::size_t Size, class Visitor, class Tuple>
-      static constexpr Ret switch_(std::size_t index, Visitor&& vis, Tuple& t) {
+      template <std::size_t Base, std::size_t Size, class Visitor,
+                class... Tuples>
+      static constexpr Ret switch_(std::size_t index, Visitor&& vis,
+                                   Tuples&&... t) {
         switch (index) {
           case Base:
             return Dispatcher<(Base < Size), Ret>::template case_<Base>(
-                std::forward<Visitor>(vis), t);
+                std::forward<Visitor>(vis), t...);
           case Base + 1:
             return Dispatcher<(Base + 1 < Size), Ret>::template case_<Base + 1>(
-                std::forward<Visitor>(vis), t);
+                std::forward<Visitor>(vis), t...);
           case Base + 2:
             return Dispatcher<(Base + 2 < Size), Ret>::template case_<Base + 2>(
-                std::forward<Visitor>(vis), t);
+                std::forward<Visitor>(vis), t...);
           case Base + 3:
             return Dispatcher<(Base + 3 < Size), Ret>::template case_<Base + 3>(
-                std::forward<Visitor>(vis), t);
+                std::forward<Visitor>(vis), t...);
           default:
             return Dispatcher<(Base + 4 < Size), Ret>::template switch_<
-                Base + 4, Size>(index, std::forward<Visitor>(vis), t);
+                Base + 4, Size>(index, std::forward<Visitor>(vis), t...);
         }
       }
     };
@@ -120,8 +129,8 @@ namespace my {
 
   template <typename... Ts>
   class Tuple {
-    using data_t = details::TupleData<Ts...>;
   public:
+    using data_t = details::TupleData<Ts...>;
     static constexpr std::size_t _size = sizeof...(Ts);
 
     explicit Tuple(Ts... ts) : data(ts...) {}
@@ -146,19 +155,82 @@ namespace my {
 
     constexpr std::size_t size() const { return _size; }
 
-    template <class Visitor, class Tuple>
-    friend decltype(auto) visit(std::size_t index, Visitor&& v, Tuple&& t);
+    template <class Visitor, class... Tuples>
+    friend decltype(auto) visit(std::size_t index, Visitor&& v, Tuples&&... t);
   private:
     data_t data;
   };
 
-  template <class Visitor, class Tuple>
-  decltype(auto) visit(std::size_t index, Visitor&& v, Tuple&& t) {
-    using tuple_t = std::decay_t<Tuple>;
-    using return_t =
-        decltype(std::invoke(std::forward<Visitor>(v), t.data.value));
-    return details::Dispatcher<true, return_t>::template switch_<
-        0, tuple_t::_size>(index, std::forward<Visitor>(v), t.data);
+  namespace details {
+
+    template <std::size_t Size, typename... Ts>
+    struct CheckSize {
+      static constexpr bool value = true;
+    };
+
+    template <std::size_t Size, typename T, typename... Ts>
+    struct CheckSize<Size, T, Ts...> {
+      static constexpr bool value =
+          Size == T::_size && CheckSize<Size, Ts...>::value;
+    };
+
+    template <typename... T>
+    struct GetSize {};
+
+    template <>
+    struct GetSize<> {
+      static constexpr std::size_t size = 0;
+    };
+
+    template <typename T, typename... Ts>
+    struct GetSize<T, Ts...> {
+      static constexpr std::size_t size = T::_size;
+      static_assert(CheckSize<size, Ts...>::value,
+                    "All tuples must be the same size");
+    };
+
+    template <typename T>
+    struct TupleDataType {
+      static constexpr bool is_const = std::is_const_v<T>;
+      using tuple_t = std::decay_t<T>;
+      using data_t = typename tuple_t::data_t;
+      using const_reference = typename data_t::const_reference;
+      using reference_type = typename data_t::reference_type;
+      using type =
+          std::conditional_t<is_const, const_reference, reference_type>;
+    };
+
+    template <class Visitor, typename... T>
+    struct GetReturnType {};
+
+    template <class Visitor, typename... Ts>
+    struct GetReturnTypeImplValueT {
+      static_assert(std::is_invocable_v<Visitor, typename Ts::type...>);
+      using type = decltype(std::invoke(std::declval<Visitor>(),
+                                        std::declval<typename Ts::type>()...));
+    };
+
+    template <class Visitor, typename T, typename... Ts>
+    struct GetReturnType<Visitor, T, Ts...> {
+      using type = typename GetReturnTypeImplValueT<Visitor, TupleDataType<T>,
+                                                    TupleDataType<Ts>...>::type;
+    };
+
+    template <class Visitor>
+    struct GetReturnType<Visitor> {
+      static_assert(std::is_invocable_v<Visitor>);
+      using type = decltype(std::invoke(std::declval<Visitor>()));
+    };
+
+  } // namespace details
+
+  template <class Visitor, class... Tuples>
+  decltype(auto) visit(std::size_t index, Visitor&& v, Tuples&&... t) {
+    constexpr std::size_t size =
+        details::GetSize<std::decay_t<Tuples>...>::size;
+    using return_t = typename details::GetReturnType<Visitor, Tuples...>::type;
+    return details::Dispatcher<true, return_t>::template switch_<0, size>(
+        index, std::forward<Visitor>(v), t.data...);
   }
 
 } // namespace my
