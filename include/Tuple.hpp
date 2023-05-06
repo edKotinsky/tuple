@@ -131,7 +131,6 @@ namespace my {
   class Tuple {
   public:
     using data_t = details::TupleData<Ts...>;
-    static constexpr std::size_t _size = sizeof...(Ts);
 
     explicit Tuple(Ts... ts) : data(ts...) {}
 
@@ -158,8 +157,19 @@ namespace my {
     template <class Visitor, class... Tuples>
     friend decltype(auto) visit(std::size_t index, Visitor&& v, Tuples&&... t);
   private:
+    static constexpr std::size_t _size = sizeof...(Ts);
     data_t data;
   };
+
+  template <class Tuple>
+  struct tuple_size {};
+
+  template <typename... Ts>
+  struct tuple_size<Tuple<Ts...>>
+      : std::integral_constant<std::size_t, sizeof...(Ts)> {};
+
+  template <class Tuple>
+  static constexpr bool tuple_size_v = tuple_size<Tuple>::value;
 
   namespace details {
 
@@ -171,7 +181,7 @@ namespace my {
     template <std::size_t Size, typename T, typename... Ts>
     struct CheckSize<Size, T, Ts...> {
       static constexpr bool value =
-          Size == T::_size && CheckSize<Size, Ts...>::value;
+          Size == tuple_size_v<T> && CheckSize<Size, Ts...>::value;
     };
 
     template <typename... T>
@@ -184,9 +194,7 @@ namespace my {
 
     template <typename T, typename... Ts>
     struct GetSize<T, Ts...> {
-      static constexpr std::size_t size = T::_size;
-      static_assert(CheckSize<size, Ts...>::value,
-                    "All tuples must be the same size");
+      static constexpr std::size_t size = tuple_size_v<T>;
     };
 
     template <typename T>
@@ -228,6 +236,8 @@ namespace my {
   decltype(auto) visit(std::size_t index, Visitor&& v, Tuples&&... t) {
     constexpr std::size_t size =
         details::GetSize<std::decay_t<Tuples>...>::size;
+    static_assert(details::CheckSize<size, std::decay_t<Tuples>...>::value,
+        "All tuples must be the same size");
     using return_t = typename details::GetReturnType<Visitor, Tuples...>::type;
     return details::Dispatcher<true, return_t>::template switch_<0, size>(
         index, std::forward<Visitor>(v), t.data...);
