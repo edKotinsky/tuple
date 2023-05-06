@@ -128,13 +128,13 @@ namespace my {
   } // namespace details
 
   template <typename... Ts>
-  class Tuple {
+  class tuple {
   public:
     using data_t = details::TupleData<Ts...>;
 
-    explicit Tuple(Ts... ts) : data(ts...) {}
+    explicit tuple(Ts... ts) : data(ts...) {}
 
-    Tuple() = default;
+    tuple() = default;
 
     template <std::size_t Index>
     constexpr auto& get() {
@@ -165,7 +165,7 @@ namespace my {
   struct tuple_size {};
 
   template <typename... Ts>
-  struct tuple_size<Tuple<Ts...>>
+  struct tuple_size<tuple<Ts...>>
       : std::integral_constant<std::size_t, sizeof...(Ts)> {};
 
   template <class Tuple>
@@ -175,11 +175,11 @@ namespace my {
   struct tuple_element {};
 
   template <std::size_t Index, typename T, typename... Ts>
-  struct tuple_element<Index, Tuple<T, Ts...>>
-      : tuple_element<Index - 1, Tuple<Ts...>> {};
+  struct tuple_element<Index, tuple<T, Ts...>>
+      : tuple_element<Index - 1, tuple<Ts...>> {};
 
   template <typename T, typename... Ts>
-  struct tuple_element<0, Tuple<T, Ts...>> {
+  struct tuple_element<0, tuple<T, Ts...>> {
     using type = T;
   };
 

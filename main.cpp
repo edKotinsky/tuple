@@ -5,7 +5,7 @@
 int main() {
   using namespace my;
 
-  Tuple<int, double, bool> t(10, 3.14, true);
+  tuple<int, double, bool> t(10, 3.14, true);
 
   assert(t.size() == 3);
 
@@ -38,7 +38,7 @@ int main() {
   visit(2, l, t);
   visit(3, l, t); // nothing
 
-  Tuple<int, double, bool> const t1(20, 1.41, false);
+  tuple<int, double, bool> const t1(20, 1.41, false);
 
   auto i1 = t1.get<0>();
   assert(i1 == 20);
