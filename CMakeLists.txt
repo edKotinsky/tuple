@@ -6,9 +6,15 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-project(MyTuple LANGUAGES CXX)
+option(TUPLE_TEST "Compile and run tests" OFF)
 
-add_executable(out main.cpp)
-target_include_directories(out PRIVATE include)
+project(Tuple LANGUAGES CXX)
 
-target_compile_options(out PRIVATE -Wall -Wpedantic -Wextra )
+add_library(Tuple INTERFACE)
+target_include_directories(Tuple INTERFACE include)
+
+target_compile_options(Tuple INTERFACE -Wall -Wpedantic -Wextra )
+
+if(GZTUPLE_TEST)
+    add_subdirectory(test)
+endif()
