@@ -33,10 +33,10 @@ int main() {
     std::cout << val << std::endl;
   };
 
-  t.visit(0, l);
-  t.visit(1, l);
-  t.visit(2, l);
-  t.visit(3, l); // nothing
+  visit(0, l, t);
+  visit(1, l, t);
+  visit(2, l, t);
+  visit(3, l, t); // nothing
 
   Tuple<int, double, bool> const t1(20, 1.41, false);
 
@@ -47,7 +47,7 @@ int main() {
     std::cout << val << std::endl;
   };
 
-  t1.visit(0, lconst);
+  visit(0, lconst, t1);
 
   return 0;
 }

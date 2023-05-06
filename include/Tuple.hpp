@@ -122,6 +122,8 @@ namespace my {
   class Tuple {
     using data_t = details::TupleData<Ts...>;
   public:
+    static constexpr std::size_t _size = sizeof...(Ts);
+
     explicit Tuple(Ts... ts) : data(ts...) {}
 
     Tuple() = default;
@@ -130,7 +132,7 @@ namespace my {
     constexpr auto& get() {
       using trueType = details::StaticGetter<Index>;
       using falseType = details::Error_Tuple_Out_Of_Bounds;
-      using result = std::conditional_t<(Index < sz), trueType, falseType>;
+      using result = std::conditional_t<(Index < _size), trueType, falseType>;
       return result::get(data);
     }
 
@@ -138,32 +140,26 @@ namespace my {
     constexpr auto const& get() const {
       using trueType = details::StaticGetter<Index>;
       using falseType = details::Error_Tuple_Out_Of_Bounds;
-      using result = std::conditional_t<(Index < sz), trueType, falseType>;
+      using result = std::conditional_t<(Index < _size), trueType, falseType>;
       return result::get(data);
     }
 
-    template <class Visitor>
-    void visit(std::size_t index, Visitor&& vis) {
-      using return_t =
-          decltype(std::invoke(std::forward<Visitor>(vis), data.value));
-      return details::Dispatcher<true, return_t>::template switch_<0, sz>(
-          index, std::forward<Visitor>(vis), data);
-    }
+    constexpr std::size_t size() const { return _size; }
 
-    template <class Visitor>
-    void visit(std::size_t index, Visitor&& vis) const {
-      using return_t =
-          decltype(std::invoke(std::forward<Visitor>(vis), data.value));
-      return details::Dispatcher<true, return_t>::template switch_<0, sz>(
-          index, std::forward<Visitor>(vis), data);
-    }
-
-    constexpr std::size_t size() { return sz; }
-
+    template <class Visitor, class Tuple>
+    friend decltype(auto) visit(std::size_t index, Visitor&& v, Tuple&& t);
   private:
-    static constexpr std::size_t sz = sizeof...(Ts);
     data_t data;
   };
+
+  template <class Visitor, class Tuple>
+  decltype(auto) visit(std::size_t index, Visitor&& v, Tuple&& t) {
+    using tuple_t = std::decay_t<Tuple>;
+    using return_t =
+        decltype(std::invoke(std::forward<Visitor>(v), t.data.value));
+    return details::Dispatcher<true, return_t>::template switch_<
+        0, tuple_t::_size>(index, std::forward<Visitor>(v), t.data);
+  }
 
 } // namespace my
 
