@@ -116,9 +116,21 @@ namespace my {
           case Base + 3:
             return Dispatcher<(Base + 3 < Size), Ret>::template case_<Base + 3>(
                 std::forward<Visitor>(vis), t...);
+          case Base + 4:
+            return Dispatcher<(Base + 4 < Size), Ret>::template case_<Base + 4>(
+                std::forward<Visitor>(vis), t...);
+          case Base + 5:
+            return Dispatcher<(Base + 5 < Size), Ret>::template case_<Base + 5>(
+                std::forward<Visitor>(vis), t...);
+          case Base + 6:
+            return Dispatcher<(Base + 6 < Size), Ret>::template case_<Base + 6>(
+                std::forward<Visitor>(vis), t...);
+          case Base + 7:
+            return Dispatcher<(Base + 7 < Size), Ret>::template case_<Base + 7>(
+                std::forward<Visitor>(vis), t...);
           default:
-            return Dispatcher<(Base + 4 < Size), Ret>::template switch_<
-                Base + 4, Size>(index, std::forward<Visitor>(vis), t...);
+            return Dispatcher<(Base + 8 < Size), Ret>::template switch_<
+                Base + 8, Size>(index, std::forward<Visitor>(vis), t...);
         }
       }
     };
