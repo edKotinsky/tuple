@@ -18,6 +18,10 @@ int main() {
   auto b = t.get<2>();
   assert(b == true);
 
+  int& iref = t.get<0>();
+  iref = 30;
+  assert(t.get<0>() == 30);
+
   /*
   auto n = t.get<3>(); // error: no match for call to ‘(result {aka
                        // my::details::Error_Tuple_Out_Of_Bounds})
